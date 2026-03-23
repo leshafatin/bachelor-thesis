@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin</title>
+  </head>
+
+  <body style="font-family: system-ui; padding: 24px">
+    <h2>Strategy for {{routeKey}}: <code>{{cur}}</code></h2>
+
+    <form method="POST" action="/admin/strategy">
+      <input type="hidden" name="route" value="{{routeKey}}" />
+      <select name="strategy">
+        {{options}}
+      </select>
+      <button type="submit">Save</button>
+    </form>
+
+    <p><a href="/page/hello">Open /page/hello</a></p>
+
+    <h3>Charts</h3>
+    <div
+      style="
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        align-items: start;
+      "
+    >
+      <div>
+        <h4>LCP (avg, ms)</h4>
+        <canvas id="chartLcp"></canvas>
+      </div>
+      <div>
+        <h4>TTFB (avg, ms)</h4>
+        <canvas id="chartTtfb"></canvas>
+      </div>
+    </div>
+
+    <h3>Latest metrics</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+      <tr>
+        <th>id</th>
+        <th>source</th>
+        <th>strategy</th>
+        <th>name</th>
+        <th>value</th>
+        <th>ts</th>
+      </tr>
+      {{rows}}
+    </table>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      const route = "{{routeKey}}";
+
+      function pickAvg(rows, metricName) {
+        const byStrategy = { csr: null, ssr: null, ssg: null };
+        for (const r of rows) {
+          if (r.name === metricName) byStrategy[r.strategy] = r.avg;
+        }
+        return ["csr", "ssr", "ssg"].map((s) => Number(byStrategy[s] ?? 0));
+      }
+
+      async function runCharts() {
+        const resp = await fetch(
+          `/admin/summary.json?route=${encodeURIComponent(route)}`
+        );
+        const data = await resp.json();
+
+        const labels = ["CSR", "SSR", "SSG"];
+        const lcp = pickAvg(data.rows, "LCP");
+        const ttfb = pickAvg(data.rows, "TTFB");
+
+        new Chart(document.getElementById("chartLcp"), {
+          type: "bar",
+          data: { labels, datasets: [{ label: "LCP avg (ms)", data: lcp }] },
+          options: { responsive: true },
+        });
+
+        new Chart(document.getElementById("chartTtfb"), {
+          type: "bar",
+          data: { labels, datasets: [{ label: "TTFB avg (ms)", data: ttfb }] },
+          options: { responsive: true },
+        });
+      }
+
+      runCharts().catch(console.error);
+    </script>
+  </body>
+</html>
