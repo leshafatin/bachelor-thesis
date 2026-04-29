@@ -8,22 +8,71 @@
 
   <body style="font-family: system-ui; padding: 24px">
     <h2>Strategy for {{routeKey}}: <code>{{cur}}</code></h2>
+    <p>
+      Активный сценарий:
+      <strong>{{selectedTitle}}</strong>
+      (<code>/page/{{selectedSlug}}</code>, тип: <code>{{selectedKind}}</code>)
+    </p>
+    <p>{{selectedGoal}}</p>
+    <p>{{experimentState}}</p>
+
+    <h3>Сценарии для сравнения</h3>
+    <div
+      style="
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      "
+    >
+      {{scenarioCards}}
+    </div>
 
     <form method="POST" action="/admin/strategy">
       <input type="hidden" name="route" value="{{routeKey}}" />
+      <input type="hidden" name="slug" value="{{selectedSlug}}" />
       <select name="strategy">
         {{options}}
       </select>
       <button type="submit">Save</button>
     </form>
 
-    <p><a href="/page/hello">Open /page/hello</a></p>
+    <form method="POST" action="/admin/reset" style="margin-top: 12px">
+      <input type="hidden" name="route" value="{{routeKey}}" />
+      <input type="hidden" name="slug" value="{{selectedSlug}}" />
+      <button type="submit">Очистить метрики сценария</button>
+    </form>
+
+    <p>
+      <a href="/page/{{selectedSlug}}">Open /page/{{selectedSlug}}</a>
+      |
+      <a href="/admin/export.csv?slug={{selectedSlug}}">Экспорт сырых метрик CSV</a>
+      |
+      <a href="/admin/summary.csv?slug={{selectedSlug}}"
+        >Экспорт агрегированной сводки CSV</a
+      >
+    </p>
+
+    <h3>Рекомендуемая серия замеров</h3>
+    <ol>
+      <li>Очистить метрики выбранного сценария.</li>
+      <li>
+        Выбрать стратегию рендеринга и открыть страницу не менее 5-10 раз в
+        одинаковых условиях.
+      </li>
+      <li>
+        Повторить серию для остальных стратегий, не меняя сценарий страницы.
+      </li>
+      <li>
+        Сравнить avg, median и p95, а затем экспортировать сводку в отчёт.
+      </li>
+    </ol>
 
     <h3>Charts</h3>
     <div
       style="
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         gap: 24px;
         align-items: start;
       "
@@ -36,14 +85,73 @@
         <h4>TTFB (avg, ms)</h4>
         <canvas id="chartTtfb"></canvas>
       </div>
+      <div>
+        <h4>INP (avg, ms)</h4>
+        <canvas id="chartInp"></canvas>
+      </div>
     </div>
+
+    <h3>Сводка по стратегиям</h3>
+    <table border="1" cellpadding="6" cellspacing="0" id="summaryTable">
+      <tr>
+        <th>strategy</th>
+        <th>group</th>
+        <th>metric</th>
+        <th>n</th>
+        <th>avg</th>
+        <th>median</th>
+        <th>p95</th>
+        <th>min</th>
+        <th>max</th>
+      </tr>
+    </table>
+
+    <h3>Прокси-метрики поведения</h3>
+    <table border="1" cellpadding="6" cellspacing="0" id="productSummaryTable">
+      <tr>
+        <th>strategy</th>
+        <th>group</th>
+        <th>event type</th>
+        <th>total events</th>
+        <th>unique views</th>
+        <th>unique sessions</th>
+        <th>session conversion, %</th>
+      </tr>
+    </table>
+
+    <h3>Воронка сценария</h3>
+    <p>
+      Ниже одна строка соответствует одному срезу стратегии. Шаги идут слева
+      направо, поэтому воронку проще сравнивать целиком.
+    </p>
+    <table border="1" cellpadding="6" cellspacing="0" id="funnelTable">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>Последние продуктовые события</h3>
+    <table border="1" cellpadding="6" cellspacing="0">
+      <tr>
+        <th>id</th>
+        <th>strategy</th>
+        <th>group</th>
+        <th>event type</th>
+        <th>target</th>
+        <th>value</th>
+        <th>created at</th>
+      </tr>
+      {{productRows}}
+    </table>
 
     <h3>Latest metrics</h3>
     <table border="1" cellpadding="6" cellspacing="0">
       <tr>
         <th>id</th>
+        <th>slug</th>
+        <th>page kind</th>
         <th>source</th>
         <th>strategy</th>
+        <th>experiment group</th>
         <th>name</th>
         <th>value</th>
         <th>ts</th>
@@ -51,9 +159,10 @@
       {{rows}}
     </table>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/vendor/chart.js"></script>
     <script>
       const route = "{{routeKey}}";
+      const slug = "{{selectedSlug}}";
 
       function pickAvg(rows, metricName) {
         const byStrategy = { csr: null, ssr: null, ssg: null };
@@ -65,13 +174,16 @@
 
       async function runCharts() {
         const resp = await fetch(
-          `/admin/summary.json?route=${encodeURIComponent(route)}`
+          `/admin/summary.json?route=${encodeURIComponent(
+            route
+          )}&slug=${encodeURIComponent(slug)}`
         );
         const data = await resp.json();
 
         const labels = ["CSR", "SSR", "SSG"];
         const lcp = pickAvg(data.rows, "LCP");
         const ttfb = pickAvg(data.rows, "TTFB");
+        const inp = pickAvg(data.rows, "INP");
 
         new Chart(document.getElementById("chartLcp"), {
           type: "bar",
@@ -84,6 +196,124 @@
           data: { labels, datasets: [{ label: "TTFB avg (ms)", data: ttfb }] },
           options: { responsive: true },
         });
+
+        new Chart(document.getElementById("chartInp"), {
+          type: "bar",
+          data: { labels, datasets: [{ label: "INP avg (ms)", data: inp }] },
+          options: { responsive: true },
+        });
+
+        const table = document.getElementById("summaryTable");
+        for (const row of data.rows) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${row.strategy}</td>
+            <td>${row.experimentGroup ?? "-"}</td>
+            <td>${row.name}</td>
+            <td>${row.n}</td>
+            <td>${row.avg}</td>
+            <td>${row.median}</td>
+            <td>${row.p95}</td>
+            <td>${row.min}</td>
+            <td>${row.max}</td>
+          `;
+          table.appendChild(tr);
+        }
+
+        const productResp = await fetch(
+          `/admin/product-summary.json?route=${encodeURIComponent(
+            route
+          )}&slug=${encodeURIComponent(slug)}`
+        );
+        const productData = await productResp.json();
+        const productTable = document.getElementById("productSummaryTable");
+        for (const row of productData.rows) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${row.strategy}</td>
+            <td>${row.experimentGroup ?? "-"}</td>
+            <td>${row.eventType}</td>
+            <td>${row.totalEvents}</td>
+            <td>${row.uniqueViews}</td>
+            <td>${row.uniqueSessions}</td>
+            <td>${row.conversionRatePct}</td>
+          `;
+          productTable.appendChild(tr);
+        }
+
+        const funnelResp = await fetch(
+          `/admin/funnel.json?route=${encodeURIComponent(
+            route
+          )}&slug=${encodeURIComponent(slug)}`
+        );
+        const funnelData = await funnelResp.json();
+        const funnelTable = document.getElementById("funnelTable");
+        const funnelHead = funnelTable.querySelector("thead");
+        const funnelBody = funnelTable.querySelector("tbody");
+        const stages = [];
+        const groupedFunnels = new Map();
+
+        for (const row of funnelData.rows) {
+          if (!stages.some((stage) => stage.stageKey === row.stageKey)) {
+            stages.push({ stageKey: row.stageKey, stageLabel: row.stageLabel });
+          }
+
+          const sliceKey = `${row.strategy}::${row.experimentGroup ?? "-"}`;
+          const existing = groupedFunnels.get(sliceKey) ?? {
+            strategy: row.strategy,
+            experimentGroup: row.experimentGroup ?? "-",
+            stages: {},
+          };
+          existing.stages[row.stageKey] = row;
+          groupedFunnels.set(sliceKey, existing);
+        }
+
+        const headerRow = document.createElement("tr");
+        headerRow.innerHTML = `
+          <th>strategy</th>
+          <th>group</th>
+          ${stages.map((stage) => `<th>${stage.stageLabel}</th>`).join("")}
+        `;
+        funnelHead.appendChild(headerRow);
+
+        for (const slice of groupedFunnels.values()) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${slice.strategy}</td>
+            <td>${slice.experimentGroup}</td>
+            ${stages
+              .map((stage) => {
+                const cell = slice.stages[stage.stageKey];
+                if (!cell) {
+                  return `<td style="background:#f8fafc;color:#94a3b8">-</td>`;
+                }
+
+                const reached = Number(cell.sessionsReached ?? 0);
+                const fromEntry = Number(cell.fromEntryPct ?? 0);
+                const fromPrevious = Number(cell.fromPreviousPct ?? 0);
+                const bg =
+                  reached === 0
+                    ? "#fef2f2"
+                    : fromEntry === 100
+                      ? "#ecfdf3"
+                      : "#eff6ff";
+
+                return `
+                  <td style="background:${bg}; min-width: 145px; vertical-align: top;">
+                    <div><strong>${reached}</strong> sessions</div>
+                    <div style="font-size:12px;color:#475569;margin-top:4px;">
+                      from entry: ${fromEntry}%
+                    </div>
+                    <div style="font-size:12px;color:#475569;">
+                      from prev: ${fromPrevious}%
+                    </div>
+                  </td>
+                `;
+              })
+              .join("")}
+          `;
+          funnelBody.appendChild(tr);
+        }
       }
 
       runCharts().catch(console.error);

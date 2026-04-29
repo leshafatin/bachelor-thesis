@@ -1,0 +1,6 @@
+dist
+client/dist
+server/dist
+shared/Page.js
+.DS_Store
+db.sqlite

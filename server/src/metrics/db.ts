@@ -20,6 +20,53 @@ db.exec(`
     ts TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS page_views (
+    page_view_id TEXT PRIMARY KEY,
+    route TEXT NOT NULL,
+    slug TEXT,
+    page_kind TEXT,
+    strategy TEXT NOT NULL,
+    session_id TEXT,
+    experiment_name TEXT,
+    experiment_group TEXT,
+    opened_at TEXT NOT NULL,
+    response_status INTEGER,
+    navigation_type TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS product_events (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    page_view_id TEXT,
+    route TEXT NOT NULL,
+    slug TEXT,
+    page_kind TEXT,
+    strategy TEXT NOT NULL,
+    session_id TEXT,
+    experiment_name TEXT,
+    experiment_group TEXT,
+    event_type TEXT NOT NULL,
+    event_target TEXT,
+    event_value TEXT,
+    created_at TEXT NOT NULL
+  );
+
   INSERT OR IGNORE INTO route_strategies(route, strategy)
   VALUES ('/page/:slug', 'csr');
 `);
+
+ensureMetricsColumn("slug", "TEXT");
+ensureMetricsColumn("page_kind", "TEXT");
+ensureMetricsColumn("session_id", "TEXT");
+ensureMetricsColumn("experiment_name", "TEXT");
+ensureMetricsColumn("experiment_group", "TEXT");
+ensureMetricsColumn("page_view_id", "TEXT");
+
+function ensureMetricsColumn(name: string, type: string) {
+  const columns = db.prepare("PRAGMA table_info(metrics)").all() as Array<{
+    name: string;
+  }>;
+
+  if (!columns.some((column) => column.name === name)) {
+    db.exec(`ALTER TABLE metrics ADD COLUMN ${name} ${type}`);
+  }
+}

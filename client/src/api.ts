@@ -11,3 +11,11 @@ export async function postMetric(payload: any) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function postProductEvent(payload: any) {
+  await fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getPageData } from "../../data/dataService.js";
+import { getPageData, listPageScenarios } from "../../data/dataService.js";
 import { renderSSR } from "./ssr.js";
 
 const OUT_DIR = path.resolve(process.cwd(), "static/page");
@@ -15,7 +15,7 @@ async function main() {
   if (process.argv[1]?.includes("ssg.ts")) {
     fs.mkdirSync(OUT_DIR, { recursive: true });
 
-    const slugs = ["hello", "about", "catalog"];
+    const slugs = listPageScenarios().map((scenario) => scenario.slug);
     for (const slug of slugs) {
       const t0 = performance.now();
       const data = getPageData(slug);
@@ -23,6 +23,10 @@ async function main() {
         data,
         strategy: "ssg",
         routeKey: "/page/:slug",
+        runtime: {
+          pageViewId: `build_view_${slug}`,
+          sessionId: `build_${slug}`,
+        },
       });
       fs.writeFileSync(path.join(OUT_DIR, `${slug}.html`), html, "utf-8");
       const ms = performance.now() - t0;
