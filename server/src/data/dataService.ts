@@ -1,28 +1,6 @@
-export type PageKind = "static" | "dynamic" | "interactive";
+import type { PageData } from "./pageTypes.js";
 
-export type PageData = {
-  slug: string;
-  kind: PageKind;
-  title: string;
-  body: string;
-  ts: string;
-  strategy?: string;
-  experimentGoal: string;
-  highlights: Array<{ label: string; value: string }>;
-  facts?: string[];
-  liveStats?: Array<{ label: string; value: string; delta?: string }>;
-  catalogItems?: Array<{
-    id: string;
-    name: string;
-    category: string;
-    description: string;
-    image: string;
-    priceRub: number;
-    oldPriceRub?: number;
-    badge?: string;
-    inStock: boolean;
-  }>;
-};
+export type { CatalogItem, PageData, PageKind, ProductEventPayload } from "./pageTypes.js";
 
 export function listPageScenarios() {
   return [
@@ -55,19 +33,32 @@ export function getPageData(inputSlug: string): PageData {
   if (slug === "report") {
     const minute = now.getUTCMinutes();
     const hour = now.getUTCHours();
+    const trafficSeries = [68, 72, 76, 81, 79, 83, 88].map(
+      (value, index) => value + ((minute + index) % 5)
+    );
+    const availabilitySeries = [98.8, 98.6, 98.4, 98.3, 98.1, 97.9, 97.8].map(
+      (value, index) => Number((value - ((minute + index) % 3) * 0.1).toFixed(1))
+    );
+    const fulfillmentSeries = [41, 39, 38, 44, 46, 43, 48].map(
+      (value, index) => value + ((hour + index) % 4)
+    );
+    const hourlyLoad = [42, 58, 64, 71, 88, 94, 79, 62].map((value, index) => ({
+      label: `${9 + index}:00`,
+      value: value + ((minute + index) % 6),
+    }));
 
     return {
       slug,
       kind: "dynamic",
       title: "Операционный отчёт за текущий интервал",
-      body: "Страница имитирует серверную витрину с часто меняющимися агрегатами. Её удобно использовать для сравнения выигрыша SSR по актуальности данных и оценки компромиссов SSG.",
+      body: "Панель для руководителя смены: здесь видно, как двигаются заказы, где проседает доступность и какие очереди рискуют выйти за SLA в ближайшие часы.",
       ts,
       experimentGoal:
         "Проверить, насколько стратегия рендеринга влияет на скорость первой отрисовки при наличии изменяющихся данных.",
       highlights: [
-        { label: "Источник данных", value: "Серверная агрегация" },
-        { label: "Характер контента", value: "Часто обновляется" },
-        { label: "Ожидаемый лидер", value: "SSR или SSG с поправкой на свежесть" },
+        { label: "Контур", value: "Операции и fulfilment" },
+        { label: "Режим", value: "Живой мониторинг смены" },
+        { label: "Ключевой риск", value: "Просадка доступности и SLA" },
       ],
       liveStats: [
         { label: "Новых заказов", value: String(120 + minute), delta: `+${minute % 9}%` },
@@ -77,10 +68,111 @@ export function getPageData(inputSlug: string): PageData {
           value: String(3 + (minute % 5)),
           delta: `${minute % 2 === 0 ? "-" : "+"}${minute % 4}%`,
         },
+        {
+          label: "Доставка today/tomorrow",
+          value: `${89 + (hour % 7)}%`,
+          delta: `${minute % 2 === 0 ? "+" : "-"}${(hour % 4) + 1}%`,
+        },
+      ],
+      reportSeries: [
+        {
+          title: "Трафик витрины",
+          unit: "тыс. сессий",
+          labels: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+          points: trafficSeries,
+          tone: "blue",
+        },
+        {
+          title: "Доступность каталога",
+          unit: "%",
+          labels: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+          points: availabilitySeries,
+          tone: "green",
+        },
+        {
+          title: "Отгрузка до SLA",
+          unit: "мин",
+          labels: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
+          points: fulfillmentSeries,
+          tone: "orange",
+        },
+      ],
+      reportChannelMix: [
+        {
+          label: "Мобильное приложение",
+          value: 46 + (hour % 5),
+          note: "Основной источник заказов в вечернем окне.",
+          tone: "blue",
+        },
+        {
+          label: "Web-витрина",
+          value: 31 + (minute % 4),
+          note: "Стабильный поток, чувствителен к скорости первой загрузки.",
+          tone: "green",
+        },
+        {
+          label: "Push и reactivation",
+          value: 14 + (hour % 3),
+          note: "Даёт резкие пики на акционных слотах.",
+          tone: "orange",
+        },
+      ],
+      reportHourlyLoad: hourlyLoad,
+      reportSegments: [
+        {
+          label: "Электроника / Юг-2",
+          availabilityPct: 92,
+          orders: 148,
+          eta: "2 ч 10 мин",
+        },
+        {
+          label: "Дом / Север-1",
+          availabilityPct: 96,
+          orders: 91,
+          eta: "1 ч 35 мин",
+        },
+        {
+          label: "Кухня / Центр-4",
+          availabilityPct: 94,
+          orders: 73,
+          eta: "2 ч 45 мин",
+        },
+      ],
+      reportAlerts: [
+        {
+          title: "Падение доступности fast-moving SKU",
+          severity: "high",
+          note: "12 SKU выпали из обещания доставки на складе Юг-2.",
+        },
+        {
+          title: "Рост времени до комплектации",
+          severity: "medium",
+          note: "Пиковая нагрузка в вечернем окне замедляет сборку заказов.",
+        },
+      ],
+      reportWorkQueues: [
+        {
+          label: "Комплектация wave 18:00",
+          backlog: `${18 + (minute % 6)} заказов`,
+          owner: "Смена Юг-2",
+          sla: "45 мин",
+        },
+        {
+          label: "Подтверждение замен",
+          backlog: `${6 + (hour % 4)} SKU`,
+          owner: "Категория электроника",
+          sla: "20 мин",
+        },
+        {
+          label: "Возвраты и разбор брака",
+          backlog: `${9 + (minute % 5)} кейсов`,
+          owner: "Операционный контроль",
+          sla: "2 ч",
+        },
       ],
       facts: [
-        "Данные включают временную метку генерации, поэтому хорошо видна разница между свежестью и скоростью.",
-        "Сценарий подходит для обсуждения ограничений SSG на быстро меняющемся контенте.",
+        "В отчёте совмещены метрики трафика, доступности и fulfilment, поэтому пользователю важно быстро считать общую картину.",
+        "Сценарий правдоподобен для сравнения стратегий рендеринга: здесь важны и свежесть данных, и быстрый первый ответ страницы.",
       ],
     };
   }
@@ -225,20 +317,16 @@ export function getPageData(inputSlug: string): PageData {
   return {
     slug,
     kind: "static",
-    title: "Информационная страница проекта",
-    body: "Контент этой страницы почти не меняется, поэтому она подходит для сравнения классических преимуществ SSG и SSR на условно статическом материале.",
+    title: "Почему котики по-прежнему правят интернетом",
+    body: "История о том, как домашние коты превратились из случайных героев форумов в устойчивый символ уютного, смешного и бесконечно цитируемого интернет-контента.",
     ts,
     experimentGoal:
       "Проверить, как стратегия рендеринга влияет на TTFB и LCP для практически неизменяемой страницы.",
-    highlights: [
-      { label: "Источник данных", value: "Предсказуемый контент" },
-      { label: "Характер контента", value: "Статический" },
-      { label: "Фокус метрик", value: "TTFB и LCP" },
-    ],
+    highlights: [],
     facts: [
-      "Это базовый сценарий, с которого удобно начинать серию замеров.",
-      "Ожидается, что SSG здесь будет наиболее сильным кандидатом по скорости ответа.",
-      "SSR остаётся полезным как контрольная стратегия для сравнения с предсобранной страницей.",
+      "Коты десятилетиями остаются одним из самых устойчивых меметических образов в сети.",
+      "Статическая статья про котиков удобна для оценки глубины чтения и кликов по связанным материалам.",
+      "Для такого сценария SSG обычно выглядит сильным кандидатом по скорости первой отдачи.",
     ],
   };
 }
