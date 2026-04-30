@@ -3,7 +3,7 @@ import { getPageData } from "../data/dataService.js";
 import { resolveRuntimeAssignment } from "../experiments/runtime.js";
 import { renderCSR } from "./adapters/csr.js";
 import { renderSSR } from "./adapters/ssr.js";
-import { tryReadSSG } from "./adapters/ssg.js";
+import { personalizeSSGHtml, tryReadSSG } from "./adapters/ssg.js";
 import crypto from "node:crypto";
 
 export type Strategy = "csr" | "ssr" | "ssg";
@@ -43,14 +43,22 @@ export function handlePageRequest(opts: {
 
   if (strategy === "ssg") {
     const hit = tryReadSSG(opts.slug);
-    if (hit)
+    if (hit) {
+      const data = getPageData(opts.slug);
       return {
         strategy,
-        html: hit,
+        html: personalizeSSGHtml({
+          html: hit,
+          routeKey: opts.routeKey,
+          strategy,
+          data,
+          runtime,
+        }),
         serverRenderMs: performance.now() - t0,
         runtime,
         setCookies: assignment.setCookies,
       };
+    }
 
     // fallback: если не сгенерено — отрендерим SSR (MVP)
     const data = getPageData(opts.slug);

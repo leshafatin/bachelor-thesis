@@ -11,6 +11,7 @@ import { getPageData } from "./data/dataService.js";
 import { mountAdmin } from "./admin/routes.js";
 
 const app = express();
+app.set("trust proxy", true);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -204,7 +205,13 @@ app.get("/page/:slug", (req, res) => {
 
 app.get("/", (_req, res) => res.redirect("/admin"));
 
-app.listen(3000, () => {
-  console.log("Server: http://localhost:3000");
+app.get("/healthz", (_req, res) => {
+  res.json({ ok: true });
+});
+
+const port = Number(process.env.PORT || 3000);
+
+app.listen(port, () => {
+  console.log(`Server: http://localhost:${port}`);
   console.log("Vite dev: http://localhost:5173");
 });

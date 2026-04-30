@@ -10,7 +10,7 @@ type ViteManifest = Record<
 >;
 
 export function injectClientScripts() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "development") {
     return `
 <script type="module" src="http://localhost:5173/@vite/client"></script>
 

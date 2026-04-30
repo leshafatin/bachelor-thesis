@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { PageData } from "../../data/dataService.js";
 import { getPageData, listPageScenarios } from "../../data/dataService.js";
+import type { RenderRuntimeContext, Strategy } from "../StrategyManager.js";
 import { renderSSR } from "./ssr.js";
 
 const OUT_DIR = path.resolve(process.cwd(), "static/page");
@@ -10,9 +12,35 @@ export function tryReadSSG(slug: string): string | null {
   return fs.existsSync(p) ? fs.readFileSync(p, "utf-8") : null;
 }
 
+export function personalizeSSGHtml(opts: {
+  html: string;
+  routeKey: string;
+  strategy: Strategy;
+  data: PageData;
+  runtime: RenderRuntimeContext;
+}) {
+  const metaScript = buildClientMetaScript(
+    opts.routeKey,
+    opts.strategy,
+    opts.data,
+    opts.runtime
+  );
+
+  if (opts.html.includes("window.__RENDER_LAB__=")) {
+    return opts.html.replace(
+      /<script>window\.__RENDER_LAB__=.*?<\/script>/s,
+      metaScript
+    );
+  }
+
+  return opts.html.replace("</body>", `  ${metaScript}\n</body>`);
+}
+
 // Скрипт генерации: `npm run ssg` (в server)
 async function main() {
-  if (process.argv[1]?.includes("ssg.ts")) {
+  const entry = path.basename(process.argv[1] ?? "");
+  if (entry.startsWith("ssg.")) {
+    process.env.NODE_ENV = "production";
     fs.mkdirSync(OUT_DIR, { recursive: true });
 
     const slugs = listPageScenarios().map((scenario) => scenario.slug);
@@ -38,3 +66,20 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
+
+function buildClientMetaScript(
+  route: string,
+  strategy: Strategy,
+  initialData: PageData,
+  runtime: RenderRuntimeContext
+) {
+  return `<script>window.__RENDER_LAB__=${JSON.stringify({
+    route,
+    strategy,
+    initialData,
+    pageViewId: runtime.pageViewId,
+    sessionId: runtime.sessionId,
+    experimentName: runtime.experimentName,
+    experimentGroup: runtime.experimentGroup,
+  })}</script>`;
+}
