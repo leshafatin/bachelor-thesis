@@ -69,6 +69,13 @@
     </ol>
 
     <h3>Charts</h3>
+    <p style="max-width: 900px; color: #516070">
+      В графиках ниже отсутствие измерения больше не показывается как
+      <code>0</code>. Это особенно важно для <code>INP</code>: браузер отправляет
+      его только после реального взаимодействия со страницей. Значение
+      <code>CLS = 0</code> при этом может быть корректным результатом, если на
+      странице не было layout shift.
+    </p>
     <div
       style="
         display: grid;
@@ -165,11 +172,24 @@
       const slug = "{{selectedSlug}}";
 
       function pickAvg(rows, metricName) {
-        const byStrategy = { csr: null, ssr: null, ssg: null };
+        const byStrategy = {
+          csr: { sum: 0, n: 0 },
+          ssr: { sum: 0, n: 0 },
+          ssg: { sum: 0, n: 0 },
+        };
         for (const r of rows) {
-          if (r.name === metricName) byStrategy[r.strategy] = r.avg;
+          if (r.name !== metricName) continue;
+          if (!byStrategy[r.strategy]) continue;
+          const weight = Number(r.n ?? 0);
+          const avg = Number(r.avg ?? 0);
+          byStrategy[r.strategy].sum += avg * weight;
+          byStrategy[r.strategy].n += weight;
         }
-        return ["csr", "ssr", "ssg"].map((s) => Number(byStrategy[s] ?? 0));
+        return ["csr", "ssr", "ssg"].map((s) => {
+          const bucket = byStrategy[s];
+          if (!bucket?.n) return null;
+          return Number((bucket.sum / bucket.n).toFixed(2));
+        });
       }
 
       async function runCharts() {
